@@ -1,0 +1,31 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+
+local lastPos = nil
+local attempts = 0
+
+lp.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    lastPos = hrp.Position
+    
+    local conn = RunService.Heartbeat:Connect(function()
+        if not hrp.Parent then conn:Disconnect() return end
+        local dist = (hrp.Position - lastPos).Magnitude
+        if dist > 50 and dist < 200 then
+            attempts = attempts + 1
+            if attempts >= 5 then
+                hrp.CFrame = CFrame.new(lastPos)
+                print("[Bypass] Rollback bloqué !")
+                attempts = 0
+            end
+        else
+            attempts = 0
+            lastPos = hrp.Position
+        end
+    end)
+end)
+
+print("[Bypass] Rollback bypass activé")
