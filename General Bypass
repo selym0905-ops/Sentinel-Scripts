@@ -1,0 +1,58 @@
+-- General Bypass (All in One)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+
+-- Speed & Jump Bypass
+local function BypassMovement()
+    for _, item in pairs(getgc(true)) do
+        if type(item) == "table" then
+            if rawget(item, "CheckSpeed") then
+                item.CheckSpeed = function() return true end
+            end
+            if rawget(item, "CheckJumpPower") then
+                item.CheckJumpPower = function() return true end
+            end
+        end
+    end
+end
+
+-- Fly Bypass
+local function BypassFly()
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "function" and debug.getinfo(v) and debug.getinfo(v).name and string.find(debug.getinfo(v).name, "CheckFly") then
+            hookfunction(v, function() return true end)
+        end
+    end
+end
+
+-- Anti-Ban
+local oldKick = game.Kick
+game.Kick = function() warn("[Anti-Ban] Kick bloqué") return nil end
+
+-- Rollback Bypass
+local lastPos, attempts = nil, 0
+lp.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    lastPos = hrp.Position
+    local conn = RunService.Heartbeat:Connect(function()
+        if not hrp.Parent then conn:Disconnect() return end
+        local dist = (hrp.Position - lastPos).Magnitude
+        if dist > 50 and dist < 200 then
+            attempts = attempts + 1
+            if attempts >= 5 then
+                hrp.CFrame = CFrame.new(lastPos)
+                attempts = 0
+            end
+        else
+            attempts = 0
+            lastPos = hrp.Position
+        end
+    end)
+end)
+
+BypassMovement()
+BypassFly()
+print("[General Bypass] Tous les bypass sont activés")
