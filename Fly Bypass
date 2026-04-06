@@ -1,0 +1,16 @@
+local function BypassFly()
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "function" then
+            local info = debug.getinfo(v)
+            if info and info.name and string.find(info.name, "CheckFly") then
+                hookfunction(v, function(...)
+                    return true
+                end)
+                print("[Bypass] Fly detection bypassé")
+                break
+            end
+        end
+    end
+end
+
+BypassFly()
