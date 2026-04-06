@@ -1,16 +1,145 @@
-local function BypassFly()
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "function" then
-            local info = debug.getinfo(v)
-            if info and info.name and string.find(info.name, "CheckFly") then
-                hookfunction(v, function(...)
-                    return true
-                end)
-                print("[Bypass] Fly detection bypassé")
-                break
+-- ULTIMATE FLY BYPASS
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+
+-- Technique 1: Hook Velocity
+local function HookVelocity()
+    local mt = getrawmetatable(game)
+    local old_newindex = mt.__newindex
+    
+    setreadonly(mt, false)
+    
+    mt.__newindex = newcclosure(function(self, key, value)
+        if key == "AssemblyLinearVelocity" and self.Name == "HumanoidRootPart" then
+            if checkcaller() then
+                return old_newindex(self, key, value)
+            end
+            return old_newindex(self, key, value)
+        end
+        return old_newindex(self, key, value)
+    end)
+    
+    setreadonly(mt, true)
+end
+
+-- Technique 2: Anti-Fly Detection
+local function AntiFlyDetection()
+    local function ScanFlyChecks()
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "function" then
+                local info = debug.getinfo(v)
+                if info and info.name then
+                    if string.find(info.name, "Fly") or 
+                       string.find(info.name, "Flight") or
+                       string.find(info.name, "IsFlying") then
+                        hookfunction(v, newcclosure(function()
+                            return false
+                        end))
+                    end
+                end
+            end
+        end
+    end
+    
+    task.spawn(function()
+        while true do
+            ScanFlyChecks()
+            task.wait(3)
+        end
+    end)
+end
+
+-- Technique 3: Seat Fly Undetected
+local function SetupUndetectedFly()
+    local seat = nil
+    local flyActive = false
+    
+    local function CreateSeat()
+        local char = lp.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        
+        seat = Instance.new("Seat")
+        seat.Name = "UndetectedSeat"
+        seat.Size = Vector3.new(1,1,1)
+        seat.Transparency = 1
+        seat.CanCollide = false
+        seat.Anchored = false
+        
+        local weld = Instance.new("Weld")
+        weld.Part0 = seat
+        weld.Part1 = hrp
+        weld.C0 = CFrame.new(0, 2, 0)
+        weld.Parent = seat
+        
+        seat.Parent = char
+    end
+    
+    _G.FlyEnabled = false
+    _G.FlySpeed = 50
+    
+    RunService.Heartbeat:Connect(function()
+        if not _G.FlyEnabled then return end
+        if not seat or not seat.Parent then
+            CreateSeat()
+        end
+        if seat then
+            local cam = workspace.CurrentCamera
+            local moveDir = Vector3.new()
+            
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                moveDir = moveDir + cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                moveDir = moveDir - cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                moveDir = moveDir - cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                moveDir = moveDir + cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                moveDir = moveDir + Vector3.new(0, 1, 0)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                moveDir = moveDir - Vector3.new(0, 1, 0)
+            end
+            
+            if moveDir.Magnitude > 0 then
+                seat.AssemblyLinearVelocity = moveDir.Unit * _G.FlySpeed
+            else
+                seat.AssemblyLinearVelocity = Vector3.new(0,0,0)
+            end
+        end
+    end)
+    
+    _G.ToggleFly = function()
+        _G.FlyEnabled = not _G.FlyEnabled
+        if _G.FlyEnabled then
+            CreateSeat()
+            local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Sit = true
+                hum.AutoRotate = false
+            end
+        else
+            if seat then seat:Destroy() seat = nil end
+            local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Sit = false
+                hum.AutoRotate = true
             end
         end
     end
 end
 
-BypassFly()
+-- Execute
+HookVelocity()
+AntiFlyDetection()
+SetupUndetectedFly()
+
+print("[ULTIMATE] Fly Bypass activated")
+print("Use _G.ToggleFly() to enable/disable fly")
