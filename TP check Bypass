@@ -1,77 +1,99 @@
--- Bypass Teleports Check
+-- ULTIMATE TELEPORT BYPASS
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 
-local originalTeleport = nil
-local teleportAttempts = 0
-local lastTeleportTime = 0
+-- Technique 1: Hook CFrame for Teleports
+local function HookTeleportCFrame()
+    local mt = getrawmetatable(game)
+    local old_newindex = mt.__newindex
+    
+    setreadonly(mt, false)
+    
+    mt.__newindex = newcclosure(function(self, key, value)
+        if key == "CFrame" and self.Name == "HumanoidRootPart" then
+            if checkcaller() then
+                return old_newindex(self, key, value)
+            end
+            print("[Teleport Bypass] Teleport allowed")
+            return old_newindex(self, key, value)
+        end
+        return old_newindex(self, key, value)
+    end)
+    
+    setreadonly(mt, true)
+end
 
--- Hook pour bypasser les vérifications de téléportation
-local function BypassTeleportDetection()
-    -- Méthode 1 : Hook des fonctions de téléportation
+-- Technique 2: Hook Teleport Remotes
+local function HookTeleportRemotes()
     for _, v in pairs(getgc(true)) do
-        if type(v) == "function" then
-            local info = debug.getinfo(v)
-            if info and info.name then
-                if string.find(info.name, "Teleport") or 
-                   string.find(info.name, "CheckTeleport") or
-                   string.find(info.name, "IsTeleportValid") then
-                    hookfunction(v, function(...)
-                        return true
-                    end)
-                    print("[Bypass] Téléportation check bypassé : " .. info.name)
+        if type(v) == "table" then
+            if rawget(v, "FireServer") then
+                local oldFire = v.FireServer
+                v.FireServer = newcclosure(function(self, ...)
+                    local args = {...}
+                    local name = tostring(self.Name)
+                    
+                    if string.find(name, "Teleport") or string.find(name, "TP") then
+                        print("[Teleport Bypass] Teleport remote allowed")
+                        return oldFire(self, ...)
+                    end
+                    return oldFire(self, ...)
+                end)
+            end
+        end
+    end
+end
+
+-- Technique 3: Anti-Teleport Detection
+local function AntiTeleportDetection()
+    local function scanTeleportChecks()
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "function" then
+                local info = debug.getinfo(v)
+                if info and info.name then
+                    if string.find(info.name, "Teleport") or 
+                       string.find(info.name, "CheckTeleport") or
+                       string.find(info.name, "IsTeleportValid") then
+                        hookfunction(v, newcclosure(function(...)
+                            return true
+                        end))
+                    end
                 end
             end
         end
     end
     
-    -- Méthode 2 : Hook des RemoteEvents liés aux téléportations
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "table" and rawget(v, "FireServer") then
-            local oldFire = v.FireServer
-            local eventName = tostring(rawget(v, "Name")) or ""
-            if string.find(eventName, "Teleport") or string.find(eventName, "TP") then
-                v.FireServer = function(self, ...)
-                    local args = {...}
-                    if tostring(self.Name):find("Teleport") or tostring(args[1]):find("Teleport") then
-                        print("[Bypass] Téléportation RemoteEvent bloqué")
-                        return nil
-                    end
-                    return oldFire(self, ...)
-                end
-            end
+    task.spawn(function()
+        while true do
+            scanTeleportChecks()
+            task.wait(3)
         end
+    end)
+end
+
+-- Technique 4: Safe Teleport Function
+local function CreateSafeTeleport()
+    _G.SafeTeleport = function(targetCFrame)
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        
+        local oldAnchored = hrp.Anchored
+        hrp.Anchored = true
+        hrp.Velocity = Vector3.zero
+        hrp.CFrame = targetCFrame
+        task.wait(0.1)
+        hrp.Anchored = oldAnchored
+        
+        print("[Teleport Bypass] Safe teleport executed")
     end
 end
 
--- Méthode 3 : Hook du CFrame pour éviter les rollbacks après téléportation
-local oldMeta = getrawmetatable(game)
-local newMeta = {}
-for k, v in pairs(oldMeta) do
-    newMeta[k] = v
-end
-
-newMeta.__index = newcclosure(function(self, key)
-    if key == "CFrame" and self:IsA("BasePart") and self.Name == "HumanoidRootPart" then
-        local char = self.Parent
-        if char and char:FindFirstChild("Humanoid") then
-            local hum = char.Humanoid
-            if hum and hum.Health > 0 then
-                -- Autoriser la téléportation sans détection
-                return oldMeta.__index(self, key)
-            end
-        end
-    end
-    return oldMeta.__index(self, key)
-end)
-
-pcall(function() setrawmetatable(game, newMeta) end)
-
--- Méthode 4 : Protection contre les vérifications post-téléportation
-local function AntiTeleportRollback()
-    local lastPosition = nil
-    local rollbackCount = 0
+-- Technique 5: Post-Teleport Protection
+local function PostTeleportProtection()
+    local lastTeleportTime = 0
+    local teleportCount = 0
     
     lp.CharacterAdded:Connect(function(char)
         task.wait(0.5)
@@ -81,24 +103,25 @@ local function AntiTeleportRollback()
         local conn = RunService.Heartbeat:Connect(function()
             if not hrp.Parent then conn:Disconnect() return end
             
-            -- Si la position change trop rapidement (téléportation)
-            if lastPosition and (hrp.Position - lastPosition).Magnitude > 100 then
-                rollbackCount = rollbackCount + 1
-                if rollbackCount >= 3 then
-                    -- Bloquer le rollback
-                    print("[Bypass] Rollback post-téléportation bloqué !")
-                    rollbackCount = 0
+            if tick() - lastTeleportTime < 1 then
+                teleportCount = teleportCount + 1
+                if teleportCount > 5 then
+                    print("[Teleport Bypass] Teleport spam protection, slowing down...")
+                    task.wait(0.5)
                 end
             else
-                rollbackCount = 0
+                teleportCount = 0
             end
-            lastPosition = hrp.Position
         end)
     end)
 end
 
--- Exécution des bypass
-BypassTeleportDetection()
-AntiTeleportRollback()
+-- Execute
+HookTeleportCFrame()
+HookTeleportRemotes()
+AntiTeleportDetection()
+CreateSafeTeleport()
+PostTeleportProtection()
 
-print("[Bypass] Teleport check bypass activé")
+print("[ULTIMATE] Teleport Bypass activated")
+print("Use _G.SafeTeleport(CFrame) to teleport safely")
