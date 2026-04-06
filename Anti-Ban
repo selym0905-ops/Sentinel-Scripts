@@ -1,0 +1,25 @@
+local oldKick = game.Kick
+game.Kick = function(...)
+    warn("[Anti-Ban] Kick bloqué !")
+    return nil
+end
+
+local function HookRemoteEvents()
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" and rawget(v, "FireServer") then
+            local oldFire = v.FireServer
+            v.FireServer = function(self, ...)
+                local args = {...}
+                if tostring(self.Name):find("Ban") or tostring(args[1]):find("Ban") then
+                    warn("[Anti-Ban] Tentative de ban bloquée")
+                    return nil
+                end
+                return oldFire(self, ...)
+            end
+            break
+        end
+    end
+end
+
+task.spawn(HookRemoteEvents)
+print("[Anti-Ban] Activé")
