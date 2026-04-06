@@ -1,0 +1,18 @@
+local function BypassJump()
+    local PlayerModule = nil
+    for _, item in pairs(getgc(true)) do
+        if type(item) == "table" and rawget(item, "CheckJumpPower") then
+            PlayerModule = item
+            break
+        end
+    end
+    
+    if PlayerModule and PlayerModule.CheckJumpPower then
+        PlayerModule.CheckJumpPower = function(...)
+            return true
+        end
+        print("[Bypass] JumpPower check bypassé")
+    end
+end
+
+BypassJump()
