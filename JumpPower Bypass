@@ -1,18 +1,83 @@
-local function BypassJump()
-    local PlayerModule = nil
-    for _, item in pairs(getgc(true)) do
-        if type(item) == "table" and rawget(item, "CheckJumpPower") then
-            PlayerModule = item
-            break
-        end
-    end
+-- ULTIMATE JUMPPOWER BYPASS
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+-- Technique 1: Hook JumpPower Property
+local function HookJumpPower()
+    local mt = getrawmetatable(game)
+    local old_newindex = mt.__newindex
+    local old_index = mt.__index
     
-    if PlayerModule and PlayerModule.CheckJumpPower then
-        PlayerModule.CheckJumpPower = function(...)
-            return true
+    setreadonly(mt, false)
+    
+    mt.__newindex = newcclosure(function(self, key, value)
+        if key == "JumpPower" and self:IsA("Humanoid") then
+            if checkcaller() then
+                return old_newindex(self, key, value)
+            end
+            return old_newindex(self, key, value)
         end
-        print("[Bypass] JumpPower check bypassé")
+        return old_newindex(self, key, value)
+    end)
+    
+    setreadonly(mt, true)
+end
+
+-- Technique 2: Hook Jump Request
+local function HookJumpRequest()
+    local oldJump = UserInputService.JumpRequest
+    UserInputService.JumpRequest = newcclosure(function()
+        if checkcaller() then
+            return oldJump()
+        end
+        local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.JumpPower = 100
+            task.wait(0.05)
+            oldJump()
+            task.wait(0.1)
+            hum.JumpPower = 50
+        end
+    end)
+end
+
+-- Technique 3: Bypass Jump Cooldown
+local function BypassCooldown()
+    local lastJump = 0
+    local oldState = nil
+    
+    lp.CharacterAdded:Connect(function(char)
+        task.wait(0.5)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.StateChanged:Connect(function(_, newState)
+                if newState == Enum.HumanoidStateType.Jumping and tick() - lastJump < 0.2 then
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end
+                lastJump = tick()
+            end)
+        end
+    end)
+end
+
+-- Technique 4: Memory Scan
+local function MemoryBypass()
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" then
+            if rawget(v, "CheckJump") then
+                rawset(v, "CheckJump", function() return true end)
+            end
+            if rawget(v, "MaxJumpPower") then
+                rawset(v, "MaxJumpPower", 999)
+            end
+        end
     end
 end
 
-BypassJump()
+HookJumpPower()
+HookJumpRequest()
+BypassCooldown()
+MemoryBypass()
+
+print("[ULTIMATE] JumpPower Bypass activated")
