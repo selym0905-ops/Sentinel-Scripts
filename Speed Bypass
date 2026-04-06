@@ -1,0 +1,22 @@
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+
+local function BypassSpeed()
+    local PlayerModule = nil
+    for _, item in pairs(getgc(true)) do
+        if type(item) == "table" and rawget(item, "CheckSpeed") then
+            PlayerModule = item
+            break
+        end
+    end
+    
+    if PlayerModule and PlayerModule.CheckSpeed then
+        local oldCheck = PlayerModule.CheckSpeed
+        PlayerModule.CheckSpeed = function(...)
+            return true
+        end
+        print("[Bypass] Speed check bypassé")
+    end
+end
+
+BypassSpeed()
