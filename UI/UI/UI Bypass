@@ -1,32 +1,124 @@
+-- ULTIMATE UI BYPASS
 local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 
-local oldMeta = getrawmetatable(game)
-local newMeta = {}
-for k, v in pairs(oldMeta) do
-    newMeta[k] = v
-end
-
-newMeta.__namecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    if method == "LoadAsset" or method == "HttpGet" then
-        return nil
-    end
-    return oldMeta.__namecall(self, ...)
-end)
-
-setrawmetatable(game, newMeta)
-
-task.spawn(function()
-    while true do
-        for _, v in pairs(lp.PlayerGui:GetChildren()) do
-            if v.Name:lower():find("dex") or v.Name:lower():find("explorer") then
-                v:Destroy()
-                print("[Bypass] Dex détecté et supprimé")
+-- Technique 1: Hide UI from Detection
+local function HideUIFromDetection()
+    local mt = getrawmetatable(game)
+    local old_index = mt.__index
+    local old_newindex = mt.__newindex
+    
+    setreadonly(mt, false)
+    
+    mt.__index = newcclosure(function(self, key)
+        if key == "GetChildren" or key == "FindFirstChild" then
+            return function(...)
+                local results = {old_index(self, key)(...)}
+                local filtered = {}
+                for _, v in pairs(results) do
+                    if v:IsA("ScreenGui") then
+                        if not v.Name:find("Fluent") and not v.Name:find("Sentinel") then
+                            table.insert(filtered, v)
+                        end
+                    else
+                        table.insert(filtered, v)
+                    end
+                end
+                return unpack(filtered)
             end
         end
-        task.wait(3)
-    end
-end)
+        return old_index(self, key)
+    end)
+    
+    setreadonly(mt, true)
+end
 
-print("[Bypass] UI bypass activé")
+-- Technique 2: Protect GUI from being killed
+local function ProtectGUI()
+    local guis = {}
+    
+    local function scanAndProtect()
+        for _, v in pairs(lp.PlayerGui:GetChildren()) do
+            if v.Name:find("Fluent") or v.Name:find("Sentinel") then
+                if not guis[v] then
+                    guis[v] = true
+                    v.Destroy = function() 
+                        print("[UI Bypass] Destroy prevented")
+                        return nil 
+                    end
+                    v.Enabled = true
+                end
+            end
+        end
+    end
+    
+    task.spawn(function()
+        while true do
+            scanAndProtect()
+            task.wait(0.5)
+        end
+    end)
+end
+
+-- Technique 3: Bypass Asset Loading Detection
+local function BypassAssetDetection()
+    local oldHttpGet = game.HttpGet
+    game.HttpGet = newcclosure(function(self, url)
+        if string.find(url, "github") or string.find(url, "raw") then
+            print("[UI Bypass] Asset load hidden")
+            return ""
+        end
+        return oldHttpGet(self, url)
+    end)
+end
+
+-- Technique 4: Hide Dex and Explorers
+local function HideDex()
+    local function destroyDex()
+        for _, v in pairs(lp.PlayerGui:GetChildren()) do
+            local name = v.Name:lower()
+            if name:find("dex") or name:find("explorer") or name:find("inspect") or name:find("krnl") or name:find("synapse") then
+                v:Destroy()
+                print("[UI Bypass] Dex/Explorer destroyed: " .. v.Name)
+            end
+        end
+        for _, v in pairs(CoreGui:GetChildren()) do
+            local name = v.Name:lower()
+            if name:find("dex") or name:find("explorer") then
+                v:Destroy()
+            end
+        end
+    end
+    
+    task.spawn(function()
+        while true do
+            destroyDex()
+            task.wait(2)
+        end
+    end)
+end
+
+-- Technique 5: Hook Instance.new for UI
+local function HookInstanceNew()
+    local oldNew = Instance.new
+    Instance.new = newcclosure(function(className, parent)
+        local instance = oldNew(className, parent)
+        if className == "ScreenGui" and parent == lp.PlayerGui then
+            if not checkcaller() then
+                print("[UI Bypass] External GUI blocked")
+                return nil
+            end
+        end
+        return instance
+    end)
+end
+
+-- Execute
+HideUIFromDetection()
+ProtectGUI()
+BypassAssetDetection()
+HideDex()
+HookInstanceNew()
+
+print("[ULTIMATE] UI Bypass activated")
