@@ -1,25 +1,131 @@
+-- ULTIMATE ANTI-BAN
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+
+-- Technique 1: Hook Kick
 local oldKick = game.Kick
-game.Kick = function(...)
-    warn("[Anti-Ban] Kick bloqué !")
+local oldParentKick = nil
+
+game.Kick = newcclosure(function(...)
+    print("[Anti-Ban] Kick prevented!")
     return nil
+end)
+
+if game.Parent and game.Parent.Kick then
+    oldParentKick = game.Parent.Kick
+    game.Parent.Kick = newcclosure(function(...)
+        print("[Anti-Ban] Parent Kick prevented!")
+        return nil
+    end)
 end
 
-local function HookRemoteEvents()
+-- Technique 2: Hook Ban Remotes
+local function HookBanRemotes()
     for _, v in pairs(getgc(true)) do
-        if type(v) == "table" and rawget(v, "FireServer") then
-            local oldFire = v.FireServer
-            v.FireServer = function(self, ...)
-                local args = {...}
-                if tostring(self.Name):find("Ban") or tostring(args[1]):find("Ban") then
-                    warn("[Anti-Ban] Tentative de ban bloquée")
-                    return nil
-                end
-                return oldFire(self, ...)
+        if type(v) == "table" then
+            if rawget(v, "FireServer") then
+                local oldFire = v.FireServer
+                v.FireServer = newcclosure(function(self, ...)
+                    local args = {...}
+                    local fullName = tostring(self.Name) .. " " .. tostring(args[1])
+                    
+                    local banKeywords = {"Ban", "Kick", "Report", "Cheat", "Exploit", "Flag", "Suspect"}
+                    for _, keyword in pairs(banKeywords) do
+                        if string.find(fullName, keyword) then
+                            print("[Anti-Ban] Blocked: " .. keyword)
+                            return nil
+                        end
+                    end
+                    
+                    return oldFire(self, ...)
+                end)
             end
-            break
+            
+            if rawget(v, "InvokeServer") then
+                local oldInvoke = v.InvokeServer
+                v.InvokeServer = newcclosure(function(self, ...)
+                    local args = {...}
+                    local fullName = tostring(self.Name) .. " " .. tostring(args[1])
+                    
+                    local banKeywords = {"Ban", "Kick", "Report", "Cheat", "Exploit", "Flag", "Suspect"}
+                    for _, keyword in pairs(banKeywords) do
+                        if string.find(fullName, keyword) then
+                            print("[Anti-Ban] Blocked invoke: " .. keyword)
+                            return nil
+                        end
+                    end
+                    
+                    return oldInvoke(self, ...)
+                end)
+            end
         end
     end
 end
 
-task.spawn(HookRemoteEvents)
-print("[Anti-Ban] Activé")
+-- Technique 3: Hook Teleport (Ban prevention)
+local function HookTeleport()
+    local oldTeleport = game:GetService("TeleportService").Teleport
+    game:GetService("TeleportService").Teleport = newcclosure(function(...)
+        print("[Anti-Ban] Teleport prevented (possible ban evasion)")
+        return nil
+    end)
+end
+
+-- Technique 4: Memory Scan for Ban Flags
+local function ScanBanFlags()
+    local function scan()
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "table" then
+                if rawget(v, "IsBanned") then
+                    rawset(v, "IsBanned", false)
+                end
+                if rawget(v, "BanStatus") then
+                    rawset(v, "BanStatus", "Normal")
+                end
+                if rawget(v, "CheatDetected") then
+                    rawset(v, "CheatDetected", false)
+                end
+            end
+        end
+    end
+    
+    task.spawn(function()
+        while true do
+            scan()
+            task.wait(2)
+        end
+    end)
+end
+
+-- Technique 5: Auto-Rejoin on Kick Attempt
+local function AutoRejoin()
+    local rejoinAttempts = 0
+    local lastKickTime = 0
+    
+    local oldKickPlayer = nil
+    if game.Players.Kick then
+        oldKickPlayer = game.Players.Kick
+        game.Players.Kick = newcclosure(function(...)
+            if tick() - lastKickTime < 5 then
+                rejoinAttempts = rejoinAttempts + 1
+                if rejoinAttempts >= 3 then
+                    print("[Anti-Ban] Multiple kicks detected, rejoining...")
+                    game:GetService("TeleportService"):Teleport(game.PlaceId)
+                end
+            else
+                rejoinAttempts = 0
+            end
+            lastKickTime = tick()
+            print("[Anti-Ban] Kick prevented")
+            return nil
+        end)
+    end
+end
+
+-- Execute
+HookBanRemotes()
+HookTeleport()
+ScanBanFlags()
+AutoRejoin()
+
+print("[ULTIMATE] Anti-Ban activated")
