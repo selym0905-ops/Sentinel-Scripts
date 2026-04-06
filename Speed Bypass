@@ -1,22 +1,92 @@
+-- ULTIMATE SPEED BYPASS
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 
-local function BypassSpeed()
-    local PlayerModule = nil
-    for _, item in pairs(getgc(true)) do
-        if type(item) == "table" and rawget(item, "CheckSpeed") then
-            PlayerModule = item
-            break
-        end
-    end
+-- Technique 1: Hook Humanoid WalkSpeed
+local function HookWalkSpeed()
+    local mt = getrawmetatable(game)
+    local old_index = mt.__index
+    local old_newindex = mt.__newindex
     
-    if PlayerModule and PlayerModule.CheckSpeed then
-        local oldCheck = PlayerModule.CheckSpeed
-        PlayerModule.CheckSpeed = function(...)
-            return true
+    setreadonly(mt, false)
+    
+    mt.__index = newcclosure(function(self, key)
+        if key == "WalkSpeed" and self:IsA("Humanoid") then
+            return old_index(self, key)
         end
-        print("[Bypass] Speed check bypassé")
+        return old_index(self, key)
+    end)
+    
+    mt.__newindex = newcclosure(function(self, key, value)
+        if key == "WalkSpeed" and self:IsA("Humanoid") then
+            if checkcaller() then
+                return old_newindex(self, key, value)
+            end
+            return old_newindex(self, key, value)
+        end
+        return old_newindex(self, key, value)
+    end)
+    
+    setreadonly(mt, true)
+end
+
+-- Technique 2: Hook CharacterAdded
+local function HookCharacter()
+    lp.CharacterAdded:Connect(function(char)
+        task.wait(0.1)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            local oldWS = hum.WalkSpeed
+            hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+                if hum.WalkSpeed ~= oldWS and not checkcaller() then
+                    hum.WalkSpeed = oldWS
+                end
+            end)
+        end
+    end)
+end
+
+-- Technique 3: Bypass Remote Events
+local function HookRemotes()
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" and rawget(v, "FireServer") then
+            local oldFire = v.FireServer
+            v.FireServer = newcclosure(function(self, ...)
+                local args = {...}
+                if tostring(self.Name):find("Speed") or tostring(self.Name):find("Walk") then
+                    return nil
+                end
+                return oldFire(self, ...)
+            end)
+        end
     end
 end
 
-BypassSpeed()
+-- Technique 4: Memory Write Bypass
+local function MemoryBypass()
+    local function scan_memory()
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "table" and rawget(v, "CheckSpeed") then
+                rawset(v, "CheckSpeed", function() return true end)
+            end
+            if type(v) == "table" and rawget(v, "OnSpeedChange") then
+                rawset(v, "OnSpeedChange", function() end)
+            end
+        end
+    end
+    task.spawn(function()
+        while true do
+            scan_memory()
+            task.wait(5)
+        end
+    end)
+end
+
+-- Execute all techniques
+HookWalkSpeed()
+HookCharacter()
+HookRemotes()
+MemoryBypass()
+
+print("[ULTIMATE] Speed Bypass activated")
