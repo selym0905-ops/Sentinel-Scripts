@@ -1,122 +1,245 @@
--- ULTIMATE ANTI-ROLLBACK
+-- ULTIMATE ANTI-ROLLBACK v2 - Enhanced & Compatible
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 
+-- Variables
 local rollbackCount = 0
 local lastPosition = nil
+local lastValidPosition = nil
 local lastTime = 0
 local isRollbackProtected = false
+local isAnchored = false
+local character = lp.Character or lp.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
 
--- Technique 1: Hook CFrame Changes
-local function HookCFrame()
-    local mt = getrawmetatable(game)
-    local old_newindex = mt.__newindex
-    local old_index = mt.__index
-    
-    setreadonly(mt, false)
-    
-    mt.__newindex = newcclosure(function(self, key, value)
-        if key == "CFrame" and self.Name == "HumanoidRootPart" then
-            if checkcaller() then
-                return old_newindex(self, key, value)
-            end
-            
-            local currentPos = old_index(self, "Position")
-            local newPos = value.Position
-            
-            if currentPos and newPos then
-                local dist = (newPos - currentPos).Magnitude
-                local timeDiff = tick() - lastTime
-                
-                if dist > 50 and dist < 200 and timeDiff < 0.5 then
-                    rollbackCount = rollbackCount + 1
-                    
-                    if rollbackCount >= 5 then
-                        print("[Anti-Rollback] Rollback detected and blocked!")
-                        return nil
-                    end
-                else
-                    rollbackCount = 0
-                end
-            end
-            
-            lastTime = tick()
-            return old_newindex(self, key, value)
-        end
-        return old_newindex(self, key, value)
+-- Safe function to check executor capabilities
+local function safeNewCclosure(func)
+    local success, result = pcall(function()
+        return newcclosure(func)
     end)
-    
-    setreadonly(mt, true)
+    return success and result or func
 end
 
--- Technique 2: Position Monitoring
+local function safeGetRawMetatable(obj)
+    local success, result = pcall(function()
+        return getrawmetatable(obj)
+    end)
+    return success and result or nil
+end
+
+local function safeGetGC()
+    local success, result = pcall(function()
+        return getgc(true)
+    end)
+    return success and result or {}
+end
+
+-- Anti-TP Rollback avec ancrage
+local function AntiRollbackTeleport()
+    RunService.Heartbeat:Connect(function()
+        if not isRollbackProtected then return end
+        
+        local char = lp.Character
+        if not char then return end
+        
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        
+        local currentPos = root.Position
+        
+        -- Détection de rollback (téléportation suspecte)
+        if lastValidPosition then
+            local dist = (currentPos - lastValidPosition).Magnitude
+            
+            -- Si téléportation > 50 studs et < 500 studs (rollback typique)
+            if dist > 50 and dist < 500 then
+                rollbackCount = rollbackCount + 1
+                
+                if rollbackCount >= 3 then
+                    print("[Anti-Rollback] Rollback detected! Teleporting back...")
+                    
+                    -- TP à la dernière position valide
+                    root.CFrame = CFrame.new(lastValidPosition)
+                    
+                    -- Ancrage pendant 1 seconde
+                    if not isAnchored then
+                        isAnchored = true
+                        local oldWalkSpeed = humanoid.WalkSpeed
+                        local oldJumpPower = humanoid.JumpPower
+                        
+                        humanoid.WalkSpeed = 0
+                        humanoid.JumpPower = 0
+                        root.Anchored = true
+                        
+                        task.wait(1)
+                        
+                        -- Restaurer le mouvement
+                        if humanoid and humanoid.Parent then
+                            humanoid.WalkSpeed = oldWalkSpeed
+                            humanoid.JumpPower = oldJumpPower
+                        end
+                        if root and root.Parent then
+                            root.Anchored = false
+                        end
+                        
+                        isAnchored = false
+                    end
+                    
+                    rollbackCount = 0
+                end
+            else
+                -- Mouvement normal
+                rollbackCount = math.max(0, rollbackCount - 0.1)
+                lastValidPosition = currentPos
+            end
+        else
+            lastValidPosition = currentPos
+        end
+    end)
+end
+
+-- Hook CFrame (compatible)
+local function HookCFrame()
+    local mt = safeGetRawMetatable(game)
+    if not mt then return end
+    
+    local old_newindex = mt.__newindex
+    
+    local success, err = pcall(function()
+        setreadonly(mt, false)
+        
+        local hookFunc = function(self, key, value)
+            if key == "CFrame" and self.Name == "HumanoidRootPart" and isRollbackProtected then
+                if checkcaller and checkcaller() then
+                    return old_newindex(self, key, value)
+                end
+                
+                local currentPos = self.Position
+                local newPos = value.Position
+                
+                if currentPos and newPos then
+                    local dist = (newPos - currentPos).Magnitude
+                    local timeDiff = tick() - lastTime
+                    
+                    if dist > 50 and dist < 500 and timeDiff < 0.5 then
+                        print("[Anti-Rollback] CFrame rollback blocked!")
+                        return nil
+                    end
+                end
+                
+                lastTime = tick()
+            end
+            return old_newindex(self, key, value)
+        end
+        
+        mt.__newindex = safeNewCclosure(hookFunc)
+        setreadonly(mt, true)
+    end)
+    
+    if not success then
+        print("[Anti-Rollback] CFrame hook failed, using fallback")
+    end
+end
+
+-- Monitor position (fallback)
 local function MonitorPosition()
     lp.CharacterAdded:Connect(function(char)
         task.wait(0.5)
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
         
-        lastPosition = hrp.Position
-        
-        local conn = RunService.Heartbeat:Connect(function()
-            if not hrp or not hrp.Parent then
-                conn:Disconnect()
-                return
-            end
-            
-            local currentPos = hrp.Position
-            local dist = (currentPos - lastPosition).Magnitude
-            
-            if dist > 60 and dist < 250 then
-                if isRollbackProtected then
-                    hrp.CFrame = CFrame.new(lastPosition)
-                    print("[Anti-Rollback] Position restored")
-                end
-            else
-                lastPosition = currentPos
-            end
-        end)
+        lastPosition = root.Position
+        lastValidPosition = root.Position
+        humanoid = char:WaitForChild("Humanoid")
+        hrp = root
     end)
 end
 
--- Technique 3: Anti-Rollback Toggle
+-- Hook Remotes (safe version)
+local function HookRollbackRemotes()
+    for _, v in pairs(safeGetGC()) do
+        if type(v) == "table" then
+            pcall(function()
+                if rawget(v, "FireServer") then
+                    local oldFire = v.FireServer
+                    local hookFunc = function(self, ...)
+                        if not isRollbackProtected then
+                            return oldFire(self, ...)
+                        end
+                        
+                        local args = {...}
+                        local name = tostring(self.Name) .. tostring(args[1]):lower()
+                        
+                        -- Mots-clés de rollback
+                        local keywords = {"rollback", "reset", "tpback", "revert", "undo", "rewind"}
+                        
+                        for _, kw in ipairs(keywords) do
+                            if name:find(kw) then
+                                print("[Anti-Rollback] Blocked remote:", name)
+                                return nil
+                            end
+                        end
+                        
+                        return oldFire(self, ...)
+                    end
+                    
+                    v.FireServer = safeNewCclosure(hookFunc)
+                end
+            end)
+        end
+    end
+end
+
+-- Setup toggle
 local function SetupToggle()
     _G.AntiRollback = false
     
     _G.ToggleRollback = function()
         _G.AntiRollback = not _G.AntiRollback
         isRollbackProtected = _G.AntiRollback
-        print("[Anti-Rollback] " .. (_G.AntiRollback and "Enabled" or "Disabled"))
-    end
-end
-
--- Technique 4: Hook Remote Rollback Events
-local function HookRollbackRemotes()
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "table" and rawget(v, "FireServer") then
-            local oldFire = v.FireServer
-            v.FireServer = newcclosure(function(self, ...)
-                local args = {...}
-                local name = tostring(self.Name) .. tostring(args[1])
-                
-                if string.find(name, "Rollback") or string.find(name, "Reset") then
-                    if _G.AntiRollback then
-                        print("[Anti-Rollback] Rollback remote blocked")
-                        return nil
-                    end
+        
+        if _G.AntiRollback then
+            local char = lp.Character
+            if char then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    lastValidPosition = root.Position
                 end
-                return oldFire(self, ...)
-            end)
+            end
         end
+        
+        print("[Anti-Rollback] " .. (_G.AntiRollback and "✅ ENABLED" or "❌ DISABLED"))
     end
 end
 
--- Execute
-HookCFrame()
-MonitorPosition()
-SetupToggle()
-HookRollbackRemotes()
+-- Keybind (F3)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F3 then
+        _G.ToggleRollback()
+    end
+end)
 
-print("[ULTIMATE] Anti-Rollback activated")
-print("Use _G.ToggleRollback() to enable/disable protection")
+-- Initialize
+local function Init()
+    task.wait(1)
+    
+    -- Setup systems
+    SetupToggle()
+    HookCFrame()
+    MonitorPosition()
+    HookRollbackRemotes()
+    AntiRollbackTeleport()
+    
+    print("=":rep(40))
+    print("[ULTIMATE v2] Anti-Rollback Loaded")
+    print("Commands:")
+    print("  _G.ToggleRollback() - Enable/Disable")
+    print("  Press F3 - Quick toggle")
+    print("=":rep(40))
+end
+
+Init()
